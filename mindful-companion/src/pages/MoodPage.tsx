@@ -13,6 +13,9 @@ import { TrendingUp, TrendingDown, Minus, Flame, Download } from "lucide-react";
 import WellbeingWidget from "@/components/WellbeingWidget";
 import AvatarManager from "@/components/avatars/AvatarManager";
 import { exportMoodPDF } from "@/lib/pdf-export";
+// 🔥 ADD THIS IMPORT (extend existing lucide import)
+import { Briefcase } from "lucide-react";
+
 
 const MOODS: { type: MoodType; emoji: string; label: string; value: number }[] = [
   { type: "anxious", emoji: "😢", label: "Awful", value: 1 },
@@ -104,6 +107,90 @@ export default function MoodPage() {
     }
     return count;
   }, [entries]);
+
+
+  // =======================
+// 🔥 ADULT FEATURES LOGIC
+// =======================
+
+// 🧠 Insights
+const adultInsights = useMemo(() => {
+  if (!entries.length) return [];
+
+  const results: string[] = [];
+
+  const moodCount: Record<string, number> = {};
+  entries.forEach(e => {
+    moodCount[e.mood] = (moodCount[e.mood] || 0) + 1;
+  });
+
+  const mostCommon = Object.entries(moodCount).sort((a, b) => b[1] - a[1])[0]?.[0];
+  if (mostCommon) {
+    results.push(`Your most frequent mood is "${mostCommon}".`);
+  }
+
+  const night = entries.filter(e => {
+    const h = new Date(e.date).getHours();
+    return h >= 20 || h <= 5;
+  }).length;
+
+  if (night > entries.length / 2) {
+    results.push("You tend to feel more emotionally active at night.");
+  }
+
+  if (entries.length > 5) {
+    results.push("You’ve been consistent with tracking — great self-awareness.");
+  }
+
+  return results;
+}, [entries]);
+
+// 📅 Weekly Reflection
+const weeklyReflection = useMemo(() => {
+  const last7 = subDays(new Date(), 7);
+  const recent = entries.filter(e => isAfter(new Date(e.date), last7));
+
+  if (!recent.length) return null;
+
+  return {
+    total: recent.length,
+    mood: recent[0]?.mood,
+  };
+}, [entries]);
+
+// ⚖️ Interactive Work-Life Balance
+const [workInput, setWorkInput] = useState("");
+const [lifeInput, setLifeInput] = useState("");
+
+const workLifeResult = useMemo(() => {
+  if (!workInput && !lifeInput) return null;
+
+  const stressKeywords = ["deadline", "pressure", "work", "busy", "tired"];
+  const relaxKeywords = ["rest", "relax", "family", "fun", "sleep"];
+
+  let stressScore = 0;
+  let lifeScore = 0;
+
+  stressKeywords.forEach(k => {
+    if (workInput.toLowerCase().includes(k)) stressScore++;
+  });
+
+  relaxKeywords.forEach(k => {
+    if (lifeInput.toLowerCase().includes(k)) lifeScore++;
+  });
+
+  const balance = Math.max(0, Math.min(100, (lifeScore / (stressScore + lifeScore || 1)) * 100));
+
+  let message = "Balanced ⚖️";
+  if (balance < 40) message = "⚠️ Work seems overwhelming. Try short breaks.";
+  if (balance > 70) message = "🌿 Good balance. Keep it up!";
+
+  return { balance, message };
+}, [workInput, lifeInput]);
+
+
+
+
 
   return (
     <AppLayout>
@@ -215,6 +302,80 @@ export default function MoodPage() {
             </ResponsiveContainer>
           )}
         </div>
+
+
+        {/* ======================= */}
+{/* 🔥 ADULT FEATURES UI */}
+{/* ======================= */}
+
+{mode === "adults" && (
+  <div className="space-y-4">
+
+    {/* 🧠 INSIGHTS */}
+    {adultInsights.length > 0 && (
+      <div className="glass-card rounded-2xl p-4 space-y-2">
+        <h3 className="text-sm font-semibold text-muted-foreground">🧠 Insights</h3>
+        {adultInsights.map((i, idx) => (
+          <div key={idx} className="text-xs p-2 rounded-md bg-muted border">
+            {i}
+          </div>
+        ))}
+      </div>
+    )}
+
+    {/* 📅 WEEKLY REFLECTION */}
+    {weeklyReflection && (
+      <div className="glass-card rounded-2xl p-4 space-y-2">
+        <h3 className="text-sm font-semibold text-muted-foreground">📅 Weekly Reflection</h3>
+        <p className="text-xs">• You logged {weeklyReflection.total} moods</p>
+        <p className="text-xs text-muted-foreground">
+          Keep showing up — consistency builds clarity.
+        </p>
+      </div>
+    )}
+
+    {/* ⚖️ WORK-LIFE BALANCE (INTERACTIVE) */}
+    <div className="glass-card rounded-2xl p-4 space-y-3">
+      <h3 className="text-sm font-semibold text-muted-foreground flex items-center gap-2">
+        <Briefcase className="w-4 h-4" /> Work-Life Balance
+      </h3>
+
+      <input
+        value={workInput}
+        onChange={(e) => setWorkInput(e.target.value)}
+        placeholder="Describe your work stress..."
+        className="w-full p-2 rounded-md bg-muted border text-xs"
+      />
+
+      <input
+        value={lifeInput}
+        onChange={(e) => setLifeInput(e.target.value)}
+        placeholder="Describe your personal/life activities..."
+        className="w-full p-2 rounded-md bg-muted border text-xs"
+      />
+
+      {workLifeResult && (
+        <>
+          <div className="w-full bg-muted rounded-full h-2">
+            <div
+              className="bg-primary h-2 rounded-full transition-all duration-500"
+              style={{ width: `${workLifeResult.balance}%` }}
+            />
+          </div>
+
+          <p className="text-xs">
+            Balance Score: <b>{Math.round(workLifeResult.balance)}%</b>
+          </p>
+
+          <p className="text-xs text-muted-foreground">
+            {workLifeResult.message}
+          </p>
+        </>
+      )}
+    </div>
+
+  </div>
+)}
 
         {entries.length > 0 && (
           <div className="space-y-3">

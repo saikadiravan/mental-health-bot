@@ -4,6 +4,8 @@ import { Float, Environment } from "@react-three/drei";
 import * as THREE from "three";
 import { useViewMode } from "@/lib/viewmode-context";
 import type { MoodType } from "@/lib/mood-context";
+import InsightsPanel from "@/components/InsightsPanel";
+import WeeklyReflection from "@/components/WeeklyReflection";
 
 const MOOD_COLORS: Record<MoodType, string> = {
   happy: "#FFD700",
@@ -83,6 +85,13 @@ interface AvatarCompanionProps {
 
 export default function AvatarCompanion({ mood = "neutral", size = "md", className = "" }: AvatarCompanionProps) {
   const { mode, modeConfig } = useViewMode();
+
+  {mode === "adults" && (
+  <div className="mt-4 flex flex-col items-center">
+    <InsightsPanel />
+    <WeeklyReflection />
+  </div>
+)}
 
   const sizeMap = { sm: "h-32 w-32", md: "h-48 w-48", lg: "h-64 w-64" };
   const seniorSizeMap = { sm: "h-40 w-40", md: "h-56 w-56", lg: "h-72 w-72" };
