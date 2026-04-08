@@ -91,6 +91,7 @@ export default function ChatPage() {
   const { mode } = useViewMode();
 
   const [specialMode, setSpecialMode] = useState(false);
+  const [breakupMode, setBreakupMode] = useState(false);
   const [selectedCharacter, setSelectedCharacter] = useState(ANIME_CHARACTERS[0]);
   const [showCharacterPicker, setShowCharacterPicker] = useState(false);
 
@@ -202,6 +203,17 @@ export default function ChatPage() {
   const sendMessage = async (text?: string) => {
     const content = (text || input).trim();
     if (!content || !user) return;
+
+    const payload = {
+    message: content,
+    user_id: user.id,
+    view_mode: mode,
+    special_mode: specialMode,
+    breakup_mode: breakupMode, // <-- ADD THIS LINE
+    character: isCustomMode ? selectedCharacter.name : undefined,
+    history: messages.map(m => ({ role: m.role, content: m.content }))
+  };
+
 
     if (messages.length === 1 && chatTitle === "New Conversation") {
       setChatTitle(content.slice(0, 30) + (content.length > 30 ? "..." : ""));
@@ -349,6 +361,19 @@ export default function ChatPage() {
                 Companion
               </Button>
             )}
+
+            {mode === "adults" && (
+  <div className="flex items-center justify-between space-x-2 py-2">
+    <Label htmlFor="breakup-mode" className="text-sm font-medium">
+      Breakup Recovery Mode
+    </Label>
+    <Switch 
+      id="breakup-mode" 
+      checked={breakupMode} 
+      onCheckedChange={setBreakupMode} 
+    />
+  </div>
+)}
 
             <Sheet>
               <SheetTrigger asChild>

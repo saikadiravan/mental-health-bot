@@ -106,7 +106,7 @@ Rules you MUST follow:
 - Focus on clarity, priorities, mindset, and small actionable steps.
 - Sound experienced and slightly firm but supportive.
 """
-    elif request.breakup_mode_mode and request.view_mode == "adults":
+    elif request.breakup_mode and request.view_mode == "adults":
         persona = """
 You are a calm, emotionally intelligent breakup recovery coach.
 
