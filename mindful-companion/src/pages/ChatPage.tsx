@@ -3,7 +3,7 @@ import { useAuth } from "@/lib/auth-context";
 import { useViewMode } from "@/lib/viewmode-context";
 import { detectCrisis, CRISIS_DISCLAIMER } from "@/lib/crisis-detection";
 import AppLayout from "@/components/AppLayout";
-import { Send, AlertTriangle, Bot, User, History, MessageSquarePlus, Edit2, Check, Trash2, Sparkles } from "lucide-react";
+import { Send, AlertTriangle, Bot, User, History, MessageSquarePlus, Check, Trash2, Sparkles } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
@@ -12,14 +12,34 @@ import { Label } from "@/components/ui/label";
 import ReactMarkdown from "react-markdown";
 import CrisisModal from "@/components/CrisisModal";
 
-interface Message { id: string; role: "user" | "assistant" | "crisis"; content: string; timestamp: Date; status: "sending" | "sent" | "delivered"; }
+interface Message {
+  id: string;
+  role: "user" | "assistant" | "crisis";
+  content: string;
+  timestamp: Date;
+  status: "sending" | "sent" | "delivered";
+}
 
-interface ChatSession { id: string; title: string; messages: Message[]; updatedAt: string; }
+interface ChatSession {
+  id: string;
+  title: string;
+  messages: Message[];
+  updatedAt: string;
+}
 
 const WELCOME_MESSAGES: Record<string, any> = {
-  teens: { normal: "Hey friend 💚 I'm here to listen — how are you feeling today?", custom: "Hey bestie! 🌸 What's been on your mind?" },
-  adults: { normal: "Hello, I'm here to support you. What's on your mind today?", custom: "Good to see you. Let's focus on what matters most right now." },
-  seniors: { normal: "Hello dear, I'm right here with you. How have you been feeling?", custom: "Hello my dear... come sit with me. Tell me what's been on your heart." }
+  teens: {
+    normal: "Hey friend 💚 I'm here to listen — how are you feeling today?",
+    custom: "Hey bestie! 🌸 What's been on your mind?",
+  },
+  adults: {
+    normal: "Hello, I'm here to support you. What's on your mind today?",
+    custom: "Good to see you. Let's focus on what matters most right now.",
+  },
+  seniors: {
+    normal: "Hello dear, I'm right here with you. How have you been feeling?",
+    custom: "Hello my dear... come sit with me. Tell me what's been on your heart.",
+  },
 };
 
 const QUICK_REPLIES_CONFIG: Record<string, any> = {
@@ -33,16 +53,28 @@ const QUICK_REPLIES_CONFIG: Record<string, any> = {
       { label: "🌸 Feeling overwhelmed", message: "I'm feeling overwhelmed" },
       { label: "⭐ Need encouragement", message: "I need some encouragement" },
       { label: "🎨 Just want to talk", message: "I just want to talk about my day" },
-    ]
+    ],
   },
   adults: {
-    normal: [{ label: "📊 Track my mood", message: "Track my mood" }, { label: "🔥 Feeling stressed at work", message: "I'm stressed about work" }],
-    custom: [{ label: "📈 Need clarity", message: "I need clarity on my goals" }, { label: "⚡ Feeling stuck", message: "I'm feeling stuck" }]
+    normal: [
+      { label: "📊 Track my mood", message: "Track my mood" },
+      { label: "🔥 Feeling stressed at work", message: "I'm stressed about work" },
+    ],
+    custom: [
+      { label: "📈 Need clarity", message: "I need clarity on my goals" },
+      { label: "⚡ Feeling stuck", message: "I'm feeling stuck" },
+    ],
   },
   seniors: {
-    normal: [{ label: "📊 Track my mood", message: "Track my mood" }, { label: "🕰️ Feeling lonely", message: "I'm feeling a bit lonely" }],
-    custom: [{ label: "🕰️ Reminiscing", message: "I miss the old days" }, { label: "❤️ Need comfort", message: "I need some comfort" }]
-  }
+    normal: [
+      { label: "📊 Track my mood", message: "Track my mood" },
+      { label: "🕰️ Feeling lonely", message: "I'm feeling a bit lonely" },
+    ],
+    custom: [
+      { label: "🕰️ Reminiscing", message: "I miss the old days" },
+      { label: "❤️ Need comfort", message: "I need some comfort" },
+    ],
+  },
 };
 
 const ANIME_CHARACTERS = [
@@ -58,9 +90,8 @@ export default function ChatPage() {
   const { user } = useAuth();
   const { mode } = useViewMode();
 
-  // --- STATES ---
   const [specialMode, setSpecialMode] = useState(false);
-  const [selectedCharacter, setSelectedCharacter] = useState(ANIME_CHARACTERS[0]); // default Tohru
+  const [selectedCharacter, setSelectedCharacter] = useState(ANIME_CHARACTERS[0]);
   const [showCharacterPicker, setShowCharacterPicker] = useState(false);
 
   const [sessions, setSessions] = useState<ChatSession[]>(() => {
@@ -68,49 +99,70 @@ export default function ChatPage() {
     if (!saved) return [];
     try {
       const parsed = JSON.parse(saved);
-      return parsed.map((s: any) => ({ ...s, messages: s.messages.map((m: any) => ({ ...m, timestamp: new Date(m.timestamp) })) }));
-    } catch { return []; }
+      return parsed.map((s: any) => ({
+        ...s,
+        messages: s.messages.map((m: any) => ({ ...m, timestamp: new Date(m.timestamp) })),
+      }));
+    } catch {
+      return [];
+    }
   });
 
   const [currentSessionId, setCurrentSessionId] = useState<string>(() => crypto.randomUUID());
   const [chatTitle, setChatTitle] = useState("New Conversation");
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
-
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const [showCrisisModal, setShowCrisisModal] = useState(false);
-  const bottomRef = useRef<HTMLDivElement>(null);
 
+  const bottomRef = useRef<HTMLDivElement>(null);
   const API_BASE_URL = "http://127.0.0.1:8000/api/chat";
 
-  // Dynamic config
   const isCustomMode = specialMode;
-  const currentWelcome = WELCOME_MESSAGES[mode]?.[isCustomMode ? "custom" : "normal"] || WELCOME_MESSAGES.teens.normal;
-  const currentQuickReplies = QUICK_REPLIES_CONFIG[mode]?.[isCustomMode ? "custom" : "normal"] || QUICK_REPLIES_CONFIG.teens.normal;
+  const currentWelcome =
+    WELCOME_MESSAGES[mode]?.[isCustomMode ? "custom" : "normal"] || WELCOME_MESSAGES.teens.normal;
+  const currentQuickReplies =
+    QUICK_REPLIES_CONFIG[mode]?.[isCustomMode ? "custom" : "normal"] || QUICK_REPLIES_CONFIG.teens.normal;
 
+  // Initialize welcome message
   useEffect(() => {
-    // Set initial welcome when mode or specialMode changes
     if (messages.length === 0) {
-      setMessages([{
-        id: "welcome",
-        role: "assistant",
-        content: currentWelcome,
-        timestamp: new Date(),
-        status: "delivered"
-      }]);
+      setMessages([
+        {
+          id: "welcome",
+          role: "assistant",
+          content: currentWelcome,
+          timestamp: new Date(),
+          status: "delivered",
+        },
+      ]);
     }
-  }, [mode, specialMode]);
+  }, [mode, specialMode, currentWelcome]);
 
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, isTyping]);
-
+  // Auto scroll to bottom
   useEffect(() => {
-    if (messages.length === 1) return;
-    setSessions(prev => {
-      const newSession: ChatSession = { id: currentSessionId, title: chatTitle, messages, updatedAt: new Date().toISOString() };
-      const existingIndex = prev.findIndex(s => s.id === currentSessionId);
-      const updated = existingIndex >= 0 ? [...prev] : [newSession, ...prev];
-      if (existingIndex >= 0) updated[existingIndex] = newSession;
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, isTyping]);
+
+  // Auto-save sessions to localStorage
+  useEffect(() => {
+    if (messages.length <= 1) return;
+
+    setSessions((prev) => {
+      const newSession: ChatSession = {
+        id: currentSessionId,
+        title: chatTitle,
+        messages,
+        updatedAt: new Date().toISOString(),
+      };
+      const existingIndex = prev.findIndex((s) => s.id === currentSessionId);
+      const updated = [...prev];
+      if (existingIndex >= 0) {
+        updated[existingIndex] = newSession;
+      } else {
+        updated.unshift(newSession);
+      }
       localStorage.setItem("mhc_chats", JSON.stringify(updated));
       return updated;
     });
@@ -118,7 +170,15 @@ export default function ChatPage() {
 
   const startNewChat = () => {
     setCurrentSessionId(crypto.randomUUID());
-    setMessages([{ id: "welcome", role: "assistant", content: currentWelcome, timestamp: new Date(), status: "delivered" }]);
+    setMessages([
+      {
+        id: "welcome",
+        role: "assistant",
+        content: currentWelcome,
+        timestamp: new Date(),
+        status: "delivered",
+      },
+    ]);
     setChatTitle("New Conversation");
     setIsEditingTitle(false);
   };
@@ -131,8 +191,8 @@ export default function ChatPage() {
 
   const deleteSession = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    setSessions(prev => {
-      const updated = prev.filter(s => s.id !== id);
+    setSessions((prev) => {
+      const updated = prev.filter((s) => s.id !== id);
       localStorage.setItem("mhc_chats", JSON.stringify(updated));
       return updated;
     });
@@ -144,25 +204,38 @@ export default function ChatPage() {
     if (!content || !user) return;
 
     if (messages.length === 1 && chatTitle === "New Conversation") {
-      setChatTitle(content.slice(0, 25) + (content.length > 25 ? "..." : ""));
+      setChatTitle(content.slice(0, 30) + (content.length > 30 ? "..." : ""));
     }
 
-    const userMsg: Message = { id: crypto.randomUUID(), role: "user", content, timestamp: new Date(), status: "sent" };
-    setMessages(prev => [...prev, userMsg]);
+    const userMsg: Message = {
+      id: crypto.randomUUID(),
+      role: "user",
+      content,
+      timestamp: new Date(),
+      status: "sent",
+    };
+
+    setMessages((prev) => [...prev, userMsg]);
     setInput("");
     setIsTyping(true);
 
     if (detectCrisis(content)) {
       setShowCrisisModal(true);
-      const crisisMsg: Message = { id: crypto.randomUUID(), role: "crisis", content: CRISIS_DISCLAIMER, timestamp: new Date(), status: "delivered" };
-      setMessages(prev => [...prev, crisisMsg]);
+      const crisisMsg: Message = {
+        id: crypto.randomUUID(),
+        role: "crisis",
+        content: CRISIS_DISCLAIMER,
+        timestamp: new Date(),
+        status: "delivered",
+      };
+      setMessages((prev) => [...prev, crisisMsg]);
       setIsTyping(false);
       return;
     }
 
     const historyPayload = messages
-      .filter(m => m.id !== "welcome" && m.role !== "crisis")
-      .map(m => ({ role: m.role, content: m.content }));
+      .filter((m) => m.id !== "welcome" && m.role !== "crisis")
+      .map((m) => ({ role: m.role, content: m.content }));
 
     try {
       const response = await fetch(`${API_BASE_URL}/`, {
@@ -174,18 +247,30 @@ export default function ChatPage() {
           view_mode: mode,
           special_mode: specialMode,
           character: specialMode && mode === "teens" ? selectedCharacter.name : null,
-          history: historyPayload
+          history: historyPayload,
         }),
       });
 
-      if (!response.ok) throw new Error("Failed to communicate with AI");
+      if (!response.ok) throw new Error("Failed");
 
       const data = await response.json();
-      const aiMsg: Message = { id: crypto.randomUUID(), role: "assistant", content: data.response, timestamp: new Date(), status: "delivered" };
-      setMessages(prev => [...prev, aiMsg]);
+      const aiMsg: Message = {
+        id: crypto.randomUUID(),
+        role: "assistant",
+        content: data.response,
+        timestamp: new Date(),
+        status: "delivered",
+      };
+      setMessages((prev) => [...prev, aiMsg]);
     } catch {
-      const errorMsg: Message = { id: crypto.randomUUID(), role: "assistant", content: "I'm having a little trouble connecting right now. Please try again. 🔌", timestamp: new Date(), status: "delivered" };
-      setMessages(prev => [...prev, errorMsg]);
+      const errorMsg: Message = {
+        id: crypto.randomUUID(),
+        role: "assistant",
+        content: "I'm having trouble connecting right now. Please try again later. 🔌",
+        timestamp: new Date(),
+        status: "delivered",
+      };
+      setMessages((prev) => [...prev, errorMsg]);
     } finally {
       setIsTyping(false);
     }
@@ -200,138 +285,226 @@ export default function ChatPage() {
 
   return (
     <AppLayout>
-      <div className="flex flex-col h-full max-h-screen">
-        {/* HEADER - IMPROVED */}
-        <div className="border-b border-border px-4 md:px-6 py-3 bg-card/50 flex flex-wrap items-center justify-between gap-4">
+      <div className="flex flex-col h-full max-h-screen overflow-hidden">
+
+        {/* HEADER */}
+        <div className="border-b border-border px-6 py-4 bg-card flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <motion.div
-              className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${specialMode ? "bg-violet-100 dark:bg-violet-900 shadow-[0_0_15px_#a855f7]" : "bg-primary/10"}`}
-              animate={specialMode ? { boxShadow: "0 0 20px #a855f7" } : {}}
+              className={`w-10 h-10 rounded-2xl flex items-center justify-center transition-all ${
+                specialMode ? "bg-violet-100 dark:bg-violet-950 shadow-md" : "bg-primary/10"
+              }`}
+              animate={specialMode ? { scale: [1, 1.05, 1] } : {}}
             >
-              <Bot className="w-5 h-5 text-primary" />
+              <Bot className="w-6 h-6 text-primary" />
             </motion.div>
 
-            <div className="flex flex-col">
+            <div className="min-w-0">
               {isEditingTitle ? (
                 <div className="flex items-center gap-2">
-                  <input value={chatTitle} onChange={(e) => setChatTitle(e.target.value)} className="text-sm font-semibold bg-background border border-input rounded px-2 py-0.5 focus:outline-none focus:ring-1 focus:ring-primary w-[150px] md:w-[200px]" autoFocus onBlur={() => setIsEditingTitle(false)} onKeyDown={(e) => e.key === 'Enter' && setIsEditingTitle(false)} />
-                  <button onClick={() => setIsEditingTitle(false)} className="text-green-500 hover:text-green-600"><Check className="w-4 h-4" /></button>
+                  <input
+                    value={chatTitle}
+                    onChange={(e) => setChatTitle(e.target.value)}
+                    className="font-semibold bg-background border border-input rounded-lg px-3 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-primary w-52"
+                    autoFocus
+                    onBlur={() => setIsEditingTitle(false)}
+                    onKeyDown={(e) => e.key === "Enter" && setIsEditingTitle(false)}
+                  />
+                  <button onClick={() => setIsEditingTitle(false)} className="text-green-600">
+                    <Check className="w-5 h-5" />
+                  </button>
                 </div>
               ) : (
-                <div className="flex items-center gap-2 group">
-                  <h2 className="text-sm font-semibold text-foreground truncate max-w-[150px] md:max-w-[300px]">
-                    {chatTitle} {specialMode && mode === "teens" && <span className="ml-1">{selectedCharacter.emoji}</span>}
-                  </h2>
-                </div>
+                <h2 className="font-semibold text-lg flex items-center gap-2 truncate">
+                  {chatTitle}
+                  {specialMode && mode === "teens" && (
+                    <span className="text-xl">{selectedCharacter.emoji}</span>
+                  )}
+                </h2>
               )}
               <p className="text-xs text-muted-foreground">
                 {specialMode
                   ? mode === "teens"
-                    ? `Anime Mode • ${selectedCharacter.name}`
+                    ? `Anime Companion • ${selectedCharacter.name}`
                     : mode === "adults"
-                      ? "Executive Coach Mode 📈"
-                      : "Nostalgic Companion Mode 🕰️"
+                    ? "Executive Coach Mode"
+                    : "Nostalgic Companion"
                   : "MindCompanion AI • Online"}
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-4">
-            {/* SPECIAL MODE TOGGLE */}
-            <div className="flex items-center gap-2 border-r border-border pr-4">
+            {/* Special Mode Toggle */}
+            <div className="flex items-center gap-3 pr-4 border-r border-border">
               <Switch checked={specialMode} onCheckedChange={setSpecialMode} id="special-mode" />
-              <Label htmlFor="special-mode" className="text-xs font-semibold cursor-pointer hidden sm:flex items-center gap-1">
-                {mode === "teens" ? "Anime Mode" : mode === "adults" ? "Coach Mode" : "Nostalgia Mode"}
-                <span className="text-base">{mode === "teens" ? "🌸" : mode === "adults" ? "📈" : "🕰️"}</span>
+              <Label htmlFor="special-mode" className="text-sm font-medium cursor-pointer hidden sm:block">
+                {mode === "teens" ? "Anime Mode 🌸" : mode === "adults" ? "Coach Mode 📈" : "Nostalgia Mode 🕰️"}
               </Label>
             </div>
 
-            {/* TEENS CHARACTER PICKER BUTTON (only when custom + teens) */}
             {mode === "teens" && specialMode && (
-              <Button variant="ghost" size="sm" onClick={() => setShowCharacterPicker(true)} className="gap-1">
+              <Button variant="outline" size="sm" onClick={() => setShowCharacterPicker(true)} className="gap-2">
                 <Sparkles className="w-4 h-4" />
-                {selectedCharacter.emoji}
+                Companion
               </Button>
             )}
 
-            {/* HISTORY + NEW CHAT */}
-            <div className="flex items-center gap-2">
-              <Sheet>
-                <SheetTrigger asChild>
-                  <Button variant="outline" size="icon" className="h-9 w-9 rounded-xl shadow-sm">
-                    <History className="w-4 h-4" />
-                  </Button>
-                </SheetTrigger>
-                <SheetContent side="right" className="w-[300px] sm:w-[400px] flex flex-col p-0">
-                  <SheetHeader className="p-6 border-b">
-                    <SheetTitle className="flex items-center gap-2">Conversation History</SheetTitle>
-                  </SheetHeader>
-                  <div className="flex-1 overflow-y-auto p-4 space-y-2 bg-muted/20">
-                    {sessions.length === 0 ? (
-                      <p className="text-sm text-muted-foreground text-center mt-10">No past conversations yet.</p>
-                    ) : (
-                      sessions.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()).map(s => (
-                        <div key={s.id} onClick={() => loadSession(s)} className={`p-3 rounded-xl border cursor-pointer group flex justify-between ${s.id === currentSessionId ? 'bg-primary/10 border-primary' : 'hover:bg-secondary'}`}>
-                          <div>
-                            <h4 className="text-sm font-medium truncate">{s.title}</h4>
-                            <p className="text-[10px] text-muted-foreground">{new Date(s.updatedAt).toLocaleDateString()}</p>
+            <Sheet>
+              <SheetTrigger asChild>
+                <Button variant="outline" size="icon">
+                  <History className="w-5 h-5" />
+                </Button>
+              </SheetTrigger>
+              <SheetContent side="right" className="w-96">
+                <SheetHeader>
+                  <SheetTitle>Conversation History</SheetTitle>
+                </SheetHeader>
+                <div className="mt-6 space-y-2">
+                  {sessions.length === 0 ? (
+                    <p className="text-sm text-muted-foreground text-center py-8">No past conversations yet.</p>
+                  ) : (
+                    sessions
+                      .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+                      .map((s) => (
+                        <div
+                          key={s.id}
+                          onClick={() => loadSession(s)}
+                          className={`p-4 rounded-2xl border cursor-pointer flex justify-between items-start hover:bg-accent transition-colors ${
+                            s.id === currentSessionId ? "bg-primary/10 border-primary" : ""
+                          }`}
+                        >
+                          <div className="min-w-0 flex-1">
+                            <h4 className="font-medium truncate">{s.title}</h4>
+                            <p className="text-xs text-muted-foreground mt-1">
+                              {new Date(s.updatedAt).toLocaleDateString()}
+                            </p>
                           </div>
-                          <button onClick={(e) => deleteSession(s.id, e)} className="opacity-0 group-hover:opacity-100"><Trash2 className="w-4 h-4" /></button>
+                          <button
+                            onClick={(e) => deleteSession(s.id, e)}
+                            className="text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
                         </div>
                       ))
-                    )}
-                  </div>
-                </SheetContent>
-              </Sheet>
+                  )}
+                </div>
+              </SheetContent>
+            </Sheet>
 
-              <Button onClick={startNewChat} className="h-9 rounded-xl gap-2">
-                <MessageSquarePlus className="w-4 h-4" />
-                <span className="hidden sm:inline">New Chat</span>
-              </Button>
-            </div>
+            <Button onClick={startNewChat} className="gap-2">
+              <MessageSquarePlus className="w-4 h-4" />
+              New Chat
+            </Button>
           </div>
         </div>
 
-        {/* CHARACTER PICKER SHEET (only teens + custom) */}
-        <Sheet open={showCharacterPicker} onOpenChange={setShowCharacterPicker}>
-          <SheetContent side="bottom" className="h-[420px]">
-            <SheetHeader>
-              <SheetTitle>Choose your Anime Companion 🌸</SheetTitle>
-            </SheetHeader>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-6">
-              {ANIME_CHARACTERS.map(char => (
-                <button
-                  key={char.name}
-                  onClick={() => {
-                    setSelectedCharacter(char);
-                    setShowCharacterPicker(false);
-                  }}
-                  className={`p-4 rounded-2xl border text-left transition-all flex flex-col items-center gap-2 ${selectedCharacter.name === char.name ? "border-violet-500 bg-violet-50 dark:bg-violet-950" : "hover:border-border"}`}
-                >
-                  <span className="text-4xl">{char.emoji}</span>
-                  <div>
-                    <p className="font-medium text-sm">{char.name}</p>
-                    <p className="text-xs text-muted-foreground">{char.desc}</p>
-                  </div>
-                </button>
-              ))}
-            </div>
-          </SheetContent>
-        </Sheet>
+        {/* CHARACTER PICKER - Fixed for Light Mode */}
+        {/* CONSISTENT ANIME CHARACTER PICKER */}
+<Sheet open={showCharacterPicker} onOpenChange={setShowCharacterPicker}>
+  <SheetContent 
+    side="right" 
+    className="w-full max-w-md sm:max-w-lg p-0 border-l border-border"
+  >
+    <div className="p-6">
+      <div className="flex items-center justify-between mb-8">
+        <div>
+          <h2 className="text-2xl font-semibold">Choose Your Anime Companion</h2>
+          <p className="text-muted-foreground text-sm mt-1">Pick someone who feels right for you today 🌸</p>
+        </div>
+        <Button 
+          variant="ghost" 
+          size="icon" 
+          onClick={() => setShowCharacterPicker(false)}
+          className="rounded-full hover:bg-muted"
+        >
+          ✕
+        </Button>
+      </div>
 
-        {/* REST OF CHAT (messages, input, etc.) remains exactly the same except dynamic quick replies */}
-        <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6">
+      <div className="grid grid-cols-2 gap-4">
+        {ANIME_CHARACTERS.map((char) => {
+          const isSelected = selectedCharacter.name === char.name;
+          return (
+            <motion.button
+              key={char.name}
+              whileHover={{ scale: 1.03 }}
+              whileTap={{ scale: 0.97 }}
+              onClick={() => {
+                setSelectedCharacter(char);
+                // Optional: auto close after selection
+                // setShowCharacterPicker(false);
+              }}
+              className={`group relative h-full p-5 rounded-3xl border transition-all flex flex-col items-center text-center overflow-hidden
+                ${isSelected 
+                  ? "border-violet-500 bg-violet-50 dark:bg-violet-950 shadow-md" 
+                  : "border-border bg-card hover:border-violet-200 hover:shadow-sm dark:hover:border-violet-800"
+                }`}
+            >
+              <div className={`text-5xl mb-4 transition-transform duration-200 ${isSelected ? "scale-110" : "group-hover:scale-105"}`}>
+                {char.emoji}
+              </div>
+
+              <p className="font-medium text-base mb-1 leading-tight">{char.name}</p>
+              <p className="text-xs text-muted-foreground leading-snug min-h-[2.5rem]">{char.desc}</p>
+
+              {isSelected && (
+                <div className="absolute bottom-3 left-1/2 -translate-x-1/2 bg-violet-600 text-white text-[10px] font-medium px-4 py-1 rounded-full flex items-center gap-1 shadow">
+                  <Sparkles className="w-3 h-3" /> Selected
+                </div>
+              )}
+            </motion.button>
+          );
+        })}
+      </div>
+
+      <div className="mt-8 flex justify-center">
+        <Button 
+          onClick={() => setShowCharacterPicker(false)} 
+          variant="outline" 
+          className="px-10"
+        >
+          Done
+        </Button>
+      </div>
+    </div>
+  </SheetContent>
+</Sheet>
+
+        {/* CHAT MESSAGES AREA */}
+        <div className="flex-1 overflow-y-auto p-6 space-y-8 bg-background">
           <AnimatePresence initial={false}>
             {messages.map((msg) => (
-              <motion.div key={msg.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className={`flex gap-3 max-w-[85%] ${msg.role === "user" ? "ml-auto flex-row-reverse" : ""}`}>
-                <div className={`w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center ${msg.role === "user" ? "bg-secondary text-secondary-foreground" : msg.role === "crisis" ? "bg-destructive/10 text-destructive" : "bg-primary/10 text-primary"}`}>
-                  {msg.role === "user" ? <User className="w-4 h-4" /> : msg.role === "crisis" ? <AlertTriangle className="w-4 h-4" /> : <Bot className="w-4 h-4" />}
+              <motion.div
+                key={msg.id}
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                className={`flex gap-4 ${msg.role === "user" ? "justify-end" : ""}`}
+              >
+                <div
+                  className={`w-9 h-9 rounded-2xl flex-shrink-0 flex items-center justify-center ${
+                    msg.role === "user"
+                      ? "bg-primary text-primary-foreground"
+                      : msg.role === "crisis"
+                      ? "bg-red-100 text-red-600 dark:bg-red-950 dark:text-red-400"
+                      : "bg-violet-100 dark:bg-violet-950 text-violet-600"
+                  }`}
+                >
+                  {msg.role === "user" ? <User className="w-5 h-5" /> : msg.role === "crisis" ? <AlertTriangle className="w-5 h-5" /> : <Bot className="w-5 h-5" />}
                 </div>
-                <div className={`px-4 py-3 rounded-2xl ${msg.role === "user" ? "bg-primary text-primary-foreground rounded-tr-sm" : msg.role === "crisis" ? "bg-destructive/10 text-destructive" : "bg-card border border-border rounded-tl-sm"}`}>
-                  <div className="text-sm prose dark:prose-invert">
-                    <ReactMarkdown>{msg.content}</ReactMarkdown>
-                  </div>
-                  <div className={`text-[10px] mt-2 ${msg.role === "user" ? "text-right text-primary-foreground/70" : "text-muted-foreground"}`}>
+
+                <div
+                  className={`max-w-[75%] px-5 py-3.5 rounded-3xl text-[15px] leading-relaxed ${
+                    msg.role === "user"
+                      ? "bg-primary text-primary-foreground rounded-tr-none"
+                      : msg.role === "crisis"
+                      ? "bg-red-50 border border-red-200 text-red-700 dark:bg-red-950 dark:border-red-800 dark:text-red-300"
+                      : "bg-card border border-border rounded-tl-none"
+                  }`}
+                >
+                  <ReactMarkdown>{msg.content}</ReactMarkdown>
+                  <div className="text-[10px] mt-2 opacity-70 text-right">
                     {new Date(msg.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                   </div>
                 </div>
@@ -340,39 +513,62 @@ export default function ChatPage() {
           </AnimatePresence>
 
           {isTyping && (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex gap-3 max-w-[80%]">
-              <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center"><Bot className="w-4 h-4 text-primary" /></div>
-              <div className="px-4 py-3 rounded-2xl bg-card border border-border flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-primary/50 animate-bounce" style={{ animationDelay: "0ms" }} />
-                <span className="w-1.5 h-1.5 rounded-full bg-primary/50 animate-bounce" style={{ animationDelay: "150ms" }} />
-                <span className="w-1.5 h-1.5 rounded-full bg-primary/50 animate-bounce" style={{ animationDelay: "300ms" }} />
+            <div className="flex gap-4">
+              <div className="w-9 h-9 rounded-2xl bg-violet-100 dark:bg-violet-950 flex items-center justify-center">
+                <Bot className="w-5 h-5 text-violet-600" />
               </div>
-            </motion.div>
+              <div className="px-5 py-3.5 bg-card border border-border rounded-3xl flex items-center gap-1.5">
+                <div className="w-2 h-2 bg-violet-500 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
+                <div className="w-2 h-2 bg-violet-500 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
+                <div className="w-2 h-2 bg-violet-500 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+              </div>
+            </div>
           )}
           <div ref={bottomRef} />
         </div>
 
-        {/* INPUT AREA */}
-        <div className="p-4 md:p-6 bg-background border-t border-border">
-          {messages.length <= 2 && !isTyping && (
+        {/* INPUT BOX - NOW RESTORED */}
+        <div className="border-t border-border bg-card p-6">
+          {/* Quick Replies */}
+          {messages.length <= 3 && !isTyping && (
             <div className="flex flex-wrap gap-2 mb-4">
-              {currentQuickReplies.map((reply: any) => (
-                <button key={reply.label} onClick={() => sendMessage(reply.message)} className="px-3 py-1.5 text-xs rounded-full border border-border bg-card hover:bg-secondary transition-colors">
+              {currentQuickReplies.map((reply: any, index: number) => (
+                <button
+                  key={index}
+                  onClick={() => sendMessage(reply.message)}
+                  className="px-4 py-2 text-sm rounded-full border bg-white hover:bg-accent dark:bg-gray-900 dark:border-gray-700 transition-colors"
+                >
                   {reply.label}
                 </button>
               ))}
             </div>
           )}
 
-          <div className="relative flex items-end gap-2">
-            <textarea value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={handleKeyDown} placeholder="Type your message..." className="w-full resize-none rounded-xl border border-input bg-background px-4 py-3 text-sm min-h-[50px] max-h-[150px]" rows={1} />
-            <Button onClick={() => sendMessage()} disabled={!input.trim() || isTyping} size="icon" className="h-[50px] w-[50px] shrink-0 rounded-xl">
+          <div className="flex gap-3">
+            <textarea
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="Type your message here..."
+              className="flex-1 resize-y min-h-[52px] max-h-[160px] rounded-2xl border border-input bg-background px-5 py-3.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400"
+              rows={1}
+            />
+            <Button
+              onClick={() => sendMessage()}
+              disabled={!input.trim() || isTyping}
+              size="icon"
+              className="h-[52px] w-[52px] rounded-2xl bg-violet-600 hover:bg-violet-700 text-white shrink-0"
+            >
               <Send className="w-5 h-5" />
             </Button>
           </div>
-          <p className="text-[10px] text-muted-foreground text-center mt-3">MindCompanion AI can make mistakes. For serious concerns, please consult a professional.</p>
+
+          <p className="text-center text-[10px] text-muted-foreground mt-4">
+            MindCompanion AI can make mistakes. For serious concerns, please consult a professional.
+          </p>
         </div>
       </div>
+
       <CrisisModal open={showCrisisModal} onClose={() => setShowCrisisModal(false)} />
     </AppLayout>
   );

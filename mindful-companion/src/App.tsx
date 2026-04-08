@@ -21,6 +21,7 @@ import ResourcesPage from "./pages/ResourcesPage";
 import JournalPage from "./pages/JournalPage";
 import SettingsPage from "./pages/SettingsPage";
 import NotFound from "./pages/NotFound";
+import CommunityPage from "./pages/CommunityPage";
 
 const queryClient = new QueryClient();
 
@@ -51,6 +52,7 @@ const App = () => (
                           <Route path="/mood" element={<MoodPage />} />
                           <Route path="/resources" element={<ResourcesPage />} />
                           <Route path="/journal" element={<JournalPage />} />
+                          <Route path="/community" element={<CommunityPage />} />
                           <Route path="/settings" element={<SettingsPage />} />
                           <Route path="*" element={<NotFound />} />
                         </Routes>

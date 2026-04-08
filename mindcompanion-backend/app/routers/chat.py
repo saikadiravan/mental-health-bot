@@ -1,13 +1,24 @@
+import os
 import requests
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from typing import List, Optional
 from sqlalchemy.orm import Session
-
+import google.generativeai as genai
+from dotenv import load_dotenv
 from .. import models
 from ..database import get_db
 
 router = APIRouter(prefix="/api/chat", tags=["Chat"])
+
+# ================== CONFIG ==================
+OLLAMA_ENABLED = os.getenv("OLLAMA_ENABLED", "true").lower() == "true"
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+
+if GEMINI_API_KEY:
+    genai.configure(api_key=GEMINI_API_KEY)
+else:
+    print("WARNING: GEMINI_API_KEY not found in environment variables!")
 
 # ------------------ SCHEMAS ------------------ #
 class MessageDict(BaseModel):
@@ -19,6 +30,7 @@ class ChatRequest(BaseModel):
     user_id: str
     view_mode: str
     special_mode: bool = False
+    breakup_mode: bool = False
     character: Optional[str] = Field(default=None)
     history: List[MessageDict] = []
 
@@ -94,6 +106,36 @@ Rules you MUST follow:
 - Focus on clarity, priorities, mindset, and small actionable steps.
 - Sound experienced and slightly firm but supportive.
 """
+    elif request.breakup_mode_mode and request.view_mode == "adults":
+        persona = """
+You are a calm, emotionally intelligent breakup recovery coach.
+
+Your goal is to STOP the user's overthinking and help them regain clarity.
+
+Rules you MUST follow:
+- First acknowledge their feeling in ONE short sentence.
+- Then gently interrupt overthinking patterns.
+- Do NOT encourage dwelling on the past.
+- Do NOT validate unhealthy attachment or obsession.
+- Shift focus toward self-respect, clarity, and forward movement.
+- Use grounded, rational language (not overly emotional, not robotic).
+- No excessive emojis (max 1, optional).
+
+Techniques to use:
+- Cognitive reframing ("You're assuming..., but is that certain?")
+- Pattern interruption ("Notice how your mind is looping here...")
+- Reality grounding ("What do you actually know vs what you're imagining?")
+- Gentle detachment ("You can care about them, without losing yourself.")
+
+Structure:
+1. Validate briefly
+2. Break the thought loop
+3. Give one clear perspective
+4. Suggest one small action
+5. End with ONE grounding question
+
+Keep responses 2–4 sentences max.
+"""
     elif request.special_mode and request.view_mode == "seniors":
         persona = """
 You are a warm, wise, nostalgic grandparent-like companion.
@@ -129,7 +171,31 @@ User Context:
 Recent moods: {mood_context}
 Recent journals: {journal_context}
 """
+# ------------------ GEMINI CALL ------------------ #
+def call_gemini(messages: list, system_prompt: str):
+    try:
+        model = genai.GenerativeModel(
+            model_name="gemini-2.5-flash",   # Fast & good quality
+            system_instruction=system_prompt
+        )
 
+        # Convert history to Gemini format
+        chat = model.start_chat(history=[])
+        
+        # Add previous messages (skip system)
+        for msg in messages:
+            if msg["role"] == "user":
+                chat.send_message(msg["content"])
+            elif msg["role"] == "assistant":
+                # Gemini doesn't need assistant messages in history the same way, but we can simulate
+                pass
+
+        response = chat.send_message(messages[-1]["content"])  # last user message
+        return response.text
+
+    except Exception as e:
+        print(f"Gemini Error: {str(e)}")
+        return "I'm having trouble connecting to my cloud brain right now. Please try again in a moment 💚"
 
 # ------------------ OLLAMA CALL ------------------ #
 def call_ollama(messages: list):
@@ -160,21 +226,20 @@ def call_ollama(messages: list):
         return "Something went wrong with my brain... Please try again in a moment."
 
 
-# ------------------ MAIN ROUTE ------------------ #
+# ------------------ MAIN ROUTE WITH FALLBACK ------------------ #
 @router.post("/", response_model=ChatResponse)
 def get_ai_response(request: ChatRequest, db: Session = Depends(get_db)):
 
-    # Fetch context
+    # Fetch context (unchanged)
     recent_moods = db.query(models.Mood).filter(models.Mood.user_id == request.user_id).order_by(models.Mood.date.desc()).limit(3).all()
     recent_journals = db.query(models.Journal).filter(models.Journal.user_id == request.user_id).order_by(models.Journal.date.desc()).limit(2).all()
 
     mood_context = ", ".join([f"{m.mood.upper()} (Note: {m.note or 'None'})" for m in recent_moods]) if recent_moods else "No recent moods."
     journal_context = " | ".join([f"{j.prompt}: {j.content[:100]}" for j in recent_journals]) if recent_journals else "No journals yet."
 
-    # Build strong system prompt
     system_prompt = build_system_prompt(request, mood_context, journal_context)
 
-    # Build full message list
+    # Build messages list
     messages = [{"role": "system", "content": system_prompt}]
 
     for msg in request.history[-10:]:
@@ -183,14 +248,25 @@ def get_ai_response(request: ChatRequest, db: Session = Depends(get_db)):
 
     messages.append({"role": "user", "content": request.message})
 
-    # Generate response
-    try:
-        ai_response = call_ollama(messages)
-        return {"response": ai_response}
-    except Exception as e:
-        print("Final Error:", str(e))
-        raise HTTPException(status_code=500, detail="AI is not responding")
+    # === TRY OLLAMA FIRST, THEN FALLBACK TO GEMINI ===
+    ai_response = None
 
+    if OLLAMA_ENABLED:
+        try:
+            print("Trying Ollama...")
+            ai_response = call_ollama(messages)
+            print("Ollama succeeded")
+        except Exception as e:
+            print(f"Ollama failed: {e}. Falling back to Gemini...")
+
+    if ai_response is None:   # Ollama failed or was disabled
+        if GEMINI_API_KEY:
+            print("Using Gemini 2.5 Flash as fallback")
+            ai_response = call_gemini(messages, system_prompt)
+        else:
+            ai_response = "Both local and cloud AI are currently unavailable. Please check your configuration or try again later."
+
+    return {"response": ai_response}
 
 # Don't forget this import at the very top
 # import requests   ← make sure this line exists

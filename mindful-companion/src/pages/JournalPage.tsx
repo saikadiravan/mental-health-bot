@@ -7,6 +7,9 @@ import { useVoice } from "@/lib/voice-context";
 import { useLanguage } from "@/lib/language-context"; 
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
+import BulletList from "@tiptap/extension-bullet-list";
+import OrderedList from "@tiptap/extension-ordered-list";
+import ListItem from "@tiptap/extension-list-item";
 import {
   PenLine,
   Shuffle,
@@ -90,18 +93,21 @@ export default function JournalPage() {
 
   // ✅ EDITOR
   const editor = useEditor({
-    extensions: [StarterKit],
-    content: "",
-    onUpdate: ({ editor }) => {
-      setContent(editor.getHTML());
-    },
-    editorProps: {
-      attributes: {
-        class:
-          "prose prose-ul:list-disc prose-ol:list-decimal dark:prose-invert max-w-none focus:outline-none min-h-[150px] px-4 py-3 text-sm bg-background",
-      },
-    },
-  });
+  extensions: [
+    StarterKit.configure({
+      bulletList: false,
+      orderedList: false,
+      listItem: false,
+    }),
+    BulletList,
+    OrderedList,
+    ListItem,
+  ],
+  content: "",
+  onUpdate: ({ editor }) => {
+    setContent(editor.getHTML());
+  },
+});
 
   // 🔀 Prompt
   const shufflePrompt = () => {
@@ -222,22 +228,33 @@ export default function JournalPage() {
             >
               <Italic />
             </Button>
+<Button
+  onClick={() => {
+    editor
+      ?.chain()
+      .focus()
+      .setParagraph()
+      .toggleBulletList()
+      .run();
+  }}
+>
+  <List />
+</Button>
+              
+  
 
             <Button
-              onClick={() =>
-                editor?.chain().focus().toggleBulletList().run()
-              }
-            >
-              <List />
-            </Button>
-
-            <Button
-              onClick={() =>
-                editor?.chain().focus().toggleOrderedList().run()
-              }
-            >
-              <ListOrdered />
-            </Button>
+  onClick={() => {
+    editor
+      ?.chain()
+      .focus()
+      .setParagraph()
+      .toggleOrderedList()
+      .run();
+  }}
+>
+  <ListOrdered />
+</Button>
           </div>
 
           <EditorContent editor={editor} />
